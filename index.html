@@ -798,7 +798,7 @@ const NS="http://www.w3.org/2000/svg";
 const HUBLABEL={"羽田空港第2ターミナル":"羽田空港","お台場海浜公園":"お台場","とうきょうスカイツリー":"スカイツリー"};
 const HUBS=["東京","新宿","渋谷","池袋","上野","品川","大手町","秋葉原","北千住","浅草","新橋","銀座","中野","荻窪","吉祥寺","赤羽","王子","日暮里","目黒","五反田","恵比寿","六本木","飯田橋","錦糸町","押上","豊洲","大崎","中目黒","武蔵小杉","調布","成城学園前","和光市","綾瀬","三鷹","代々木上原","下北沢","明大前","羽田空港第2ターミナル","お台場海浜公園","見沼代親水公園","舎人","西新井","練馬","蒲田","溝の口","自由が丘","天王洲アイル","とうきょうスカイツリー"];
 const stage=$("mapstage"),maptip=$("maptip");
-const dotEls={},labelEls={},tierMap={},linePolys=[];
+const dotEls={},hitEls={},labelEls={},tierMap={},linePolys=[];
 let mapsvg=null,VB=null,VB0=null,mapFrom=null,mapTo=null,hlGroup=null,labelsG=null;
 function lineCount(st){return (G.stationLines[st]||[]).length;}
 
@@ -836,6 +836,18 @@ function buildMap(){
     c.dataset.st=st;dotEls[st]=c;gd.appendChild(c);
   }
   mapsvg.appendChild(gd);
+  // タップ用透明ヒット円（視覚はそのまま、当たり判定を広げる）
+  const gh=document.createElementNS(NS,"g");
+  for(const st of ALL_STATIONS){
+    const p=POS[st];
+    const h=document.createElementNS(NS,"circle");
+    h.setAttribute("cx",p.x.toFixed(1));h.setAttribute("cy",p.y.toFixed(1));
+    h.setAttribute("r",12);
+    h.setAttribute("fill","transparent");h.setAttribute("stroke","none");
+    h.setAttribute("class","st-dot");
+    h.dataset.st=st;hitEls[st]=h;gh.appendChild(h);
+  }
+  mapsvg.appendChild(gh);
   // 駅ラベル（全駅ぶん作成し、ズームに応じて段階表示）
   const HUBSET=new Set(HUBS);
   const ENDSET=new Set();
@@ -875,6 +887,8 @@ function updateZoomVisual(){
     }
   }
   const rN=3*k,rT=4.6*k,stW=1.2*k;
+  const hitR=Math.max(12*k,rT*2.5);
+  for(const st in hitEls)hitEls[st].setAttribute("r",hitR.toFixed(2));
   for(const st in dotEls){
     const c=dotEls[st],sel=c.classList.contains("df")||c.classList.contains("dt"),n=lineCount(st);
     let r=n>1?rT:rN;if(sel)r*=1.7;
