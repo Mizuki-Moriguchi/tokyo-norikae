@@ -969,25 +969,52 @@ function selectStation(st){
 $("mapClear").onclick=()=>{mapFrom=null;mapTo=null;$("from").value="";$("to").value="";
   LAST=null;SEL=0;$("out").innerHTML="";if(hlGroup){hlGroup.remove();hlGroup=null;}refreshPick();};
 
-// パン・ズーム・クリック
-let dragging=false,moved=false,sx=0,sy=0;
-stage.addEventListener("pointerdown",e=>{dragging=true;moved=false;sx=e.clientX;sy=e.clientY;try{stage.setPointerCapture(e.pointerId);}catch(_){}});
+// パン・ズーム・クリック（ピンチ対応）
+const activePointers=new Map();
+let moved=false,lastPinchDist=null;
+function getPinchCenter(){
+  const pts=[...activePointers.values()],r=stage.getBoundingClientRect();
+  return{cx:((pts[0].x+pts[1].x)/2-r.left)/r.width,cy:((pts[0].y+pts[1].y)/2-r.top)/r.height};
+}
+function getPinchDist(){
+  const pts=[...activePointers.values()];
+  return Math.hypot(pts[0].x-pts[1].x,pts[0].y-pts[1].y);
+}
+stage.addEventListener("pointerdown",e=>{
+  activePointers.set(e.pointerId,{x:e.clientX,y:e.clientY});
+  moved=false;
+  try{stage.setPointerCapture(e.pointerId);}catch(_){}
+  if(activePointers.size===2)lastPinchDist=getPinchDist();
+});
 stage.addEventListener("pointermove",e=>{
   const t=e.target;
-  if(dragging){
-    const dx=e.clientX-sx,dy=e.clientY-sy;
+  if(!activePointers.has(e.pointerId)){
+    if(t&&t.classList&&t.classList.contains("st-dot")){showTip(t.dataset.st,e);}else hideTip();
+    return;
+  }
+  const prev=activePointers.get(e.pointerId);
+  activePointers.set(e.pointerId,{x:e.clientX,y:e.clientY});
+  if(activePointers.size===2){
+    hideTip();
+    const newDist=getPinchDist();
+    if(lastPinchDist&&lastPinchDist>0){
+      const{cx,cy}=getPinchCenter();
+      zoomAt(lastPinchDist/newDist,cx,cy);
+    }
+    lastPinchDist=newDist;
+    moved=true;
+  }else if(activePointers.size===1){
+    const dx=e.clientX-prev.x,dy=e.clientY-prev.y;
     if(Math.abs(dx)+Math.abs(dy)>4)moved=true;
-    sx=e.clientX;sy=e.clientY;
     const r=stage.getBoundingClientRect();
     VB.x-=dx*VB.w/r.width;VB.y-=dy*VB.h/r.height;applyVB();
-    hideTip();return;
+    hideTip();
   }
-  if(t&&t.classList&&t.classList.contains("st-dot")){showTip(t.dataset.st,e);}else hideTip();
 });
-function endDrag(){dragging=false;}
-stage.addEventListener("pointerup",endDrag);
-stage.addEventListener("pointercancel",endDrag);
-stage.addEventListener("pointerleave",()=>{hideTip();});
+function endPointer(e){activePointers.delete(e.pointerId);if(activePointers.size<2)lastPinchDist=null;}
+stage.addEventListener("pointerup",endPointer);
+stage.addEventListener("pointercancel",endPointer);
+stage.addEventListener("pointerleave",e=>{activePointers.delete(e.pointerId);if(activePointers.size<2)lastPinchDist=null;hideTip();});
 stage.addEventListener("click",e=>{
   if(moved)return;
   const t=e.target;
