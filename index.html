@@ -78,6 +78,18 @@ header{margin-bottom:22px;position:relative}
 .hint{font-size:12px;color:var(--ink-faint);margin-top:10px;text-align:center}
 .err{color:var(--accent-2);font-size:13px;font-weight:500;margin-top:10px;text-align:center}
 
+/* ---------- Autocomplete ---------- */
+.field{position:relative}
+.ac-list{position:absolute;left:0;right:0;top:calc(100% + 4px);background:#fff;
+  border:1.5px solid var(--accent);border-radius:13px;box-shadow:var(--shadow-lg);
+  z-index:100;max-height:220px;overflow-y:auto;display:none}
+.ac-list.open{display:block}
+.ac-item{padding:11px 16px;font-size:15px;font-weight:500;cursor:pointer;color:var(--ink)}
+.ac-item:first-child{border-radius:11px 11px 0 0}
+.ac-item:last-child{border-radius:0 0 11px 11px}
+.ac-item:only-child{border-radius:11px}
+.ac-item:hover,.ac-item.active{background:var(--paper);color:var(--accent)}
+
 /* ---------- Suggestions ---------- */
 .chips{display:flex;gap:7px;flex-wrap:wrap;margin-top:10px}
 .chip{font-size:12px;border:1px solid var(--line);background:#fff;border-radius:999px;
@@ -192,7 +204,8 @@ details.legend-wrap summary::-webkit-details-marker{display:none}
     <div class="field from">
       <span class="dot"></span>
       <label>のる駅</label>
-      <input id="from" list="stations" placeholder="例）渋谷" autocomplete="off">
+      <input id="from" placeholder="例）渋谷" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
+      <div class="ac-list" id="ac-from"></div>
     </div>
     <div class="connector">
       <span class="vline"></span>
@@ -201,9 +214,9 @@ details.legend-wrap summary::-webkit-details-marker{display:none}
     <div class="field to">
       <span class="dot"></span>
       <label>おりる駅</label>
-      <input id="to" list="stations" placeholder="例）大手町" autocomplete="off">
+      <input id="to" placeholder="例）大手町" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
+      <div class="ac-list" id="ac-to"></div>
     </div>
-    <datalist id="stations"></datalist>
     <button class="go" id="go">経路をさがす</button>
     <div id="msg"></div>
     <div class="chips" id="chips"></div>
@@ -693,8 +706,44 @@ function symHTML(lineId,small){
 function esc(s){return (s||"").replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));}
 
 const $=id=>document.getElementById(id);
-// datalist
-$("stations").innerHTML=ALL_STATIONS.map(s=>`<option value="${esc(s)}">`).join("");
+// 自前オートコンプリート（iOS Safari対応）
+function setupAC(inputId,listId){
+  const inp=$(inputId),list=$(listId);
+  let activeIdx=-1;
+  function suggest(val){
+    const q=val.trim();
+    if(!q){list.classList.remove('open');return;}
+    const starts=ALL_STATIONS.filter(s=>s.startsWith(q)).slice(0,10);
+    const contains=ALL_STATIONS.filter(s=>s.includes(q)&&!s.startsWith(q)).slice(0,5);
+    const matches=[...starts,...contains];
+    if(!matches.length){list.classList.remove('open');return;}
+    activeIdx=-1;
+    list.innerHTML=matches.map((s,i)=>`<div class="ac-item" data-i="${i}" data-st="${esc(s)}">${esc(s)}</div>`).join('');
+    list.classList.add('open');
+  }
+  function close(){list.classList.remove('open');activeIdx=-1;}
+  function pick(st){inp.value=st;close();}
+  inp.addEventListener('input',e=>suggest(e.target.value));
+  inp.addEventListener('keydown',e=>{
+    const items=list.querySelectorAll('.ac-item');
+    if(!items.length)return;
+    if(e.key==='ArrowDown'){e.preventDefault();activeIdx=Math.min(activeIdx+1,items.length-1);}
+    else if(e.key==='ArrowUp'){e.preventDefault();activeIdx=Math.max(activeIdx-1,0);}
+    else if(e.key==='Enter'){if(activeIdx>=0){e.preventDefault();pick(items[activeIdx].dataset.st);run();return;}close();return;}
+    else if(e.key==='Escape'){close();return;}
+    items.forEach((el,i)=>el.classList.toggle('active',i===activeIdx));
+    if(activeIdx>=0)items[activeIdx].scrollIntoView({block:'nearest'});
+  });
+  list.addEventListener('mousedown',e=>{
+    const item=e.target.closest('.ac-item');if(item){e.preventDefault();pick(item.dataset.st);}
+  });
+  list.addEventListener('touchstart',e=>{
+    const item=e.target.closest('.ac-item');if(item){e.preventDefault();pick(item.dataset.st);}
+  },{passive:false});
+  inp.addEventListener('blur',()=>setTimeout(close,150));
+}
+setupAC('from','ac-from');
+setupAC('to','ac-to');
 // legend（事業者別にグループ化）
 (function(){
   const order=[];const byOp={};
